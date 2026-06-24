@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>THAWNETWORK.github.io | Sheet Editor</title>
+<link rel="icon" type="image/png" href="system/favicons/current.png">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Space+Mono&display=swap');
+
+  :root {
+    --bg:    #0b0f18;
+    --surf:  #111827;
+    --bdr:   #1e2d40;
+    --cyan:  #22d3ee;
+    --grn:   #22c55e;
+    --red:   #ef4444;
+    --yel:   #facc15;
+    --txt:   #e2e8f0;
+    --mut:   #64748b;
+    --dim:   #1e293b;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { height:100%; background:var(--bg); font-family:'Space Grotesk',sans-serif; color:var(--txt); font-size:14px; }
+
+  /* ── LAYOUT ── */
+  .app { display:grid; grid-template-rows:52px 1fr 48px; height:100vh; }
+
+  /* ── TOPBAR ── */
+  #bar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 18px; border-bottom:1px solid var(--bdr);
+    background:rgba(11,15,24,.96); backdrop-filter:blur(10px);
+  }
+  #logo { font-family:'Space Mono',monospace; font-size:18px; font-weight:700; letter-spacing:.12em; color:var(--cyan); }
+  #logo em { font-style:normal; font-size:10px; font-weight:400; color:var(--mut); margin-left:10px; border-left:1px solid var(--bdr); padding-left:10px; letter-spacing:.06em; text-transform:uppercase; }
+  .bar-right { display:flex; align-items:center; gap:10px; }
+  .setting { display:flex; align-items:center; gap:6px; font-family:'Space Mono',monospace; font-size:11px; color:var(--mut); }
+  .setting input {
+    font-family:'Space Mono',monospace; font-size:12px; background:var(--dim); border:1px solid var(--bdr);
+    color:var(--txt); border-radius:5px; padding:4px 8px;
+  }
+  #start-cell { width:52px; }
+  #delim      { width:36px; text-align:center; }
+
+  /* ── MAIN ── */
+  #main { display:grid; grid-template-columns:1fr 1fr; overflow:hidden; }
+
+  /* ── EDITOR PANE ── */
+  #editor-pane { display:flex; flex-direction:column; border-right:1px solid var(--bdr); }
+  .pane-head { font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--mut); padding:10px 16px 6px; border-bottom:1px solid var(--bdr); }
+  #editor {
+    flex:1; font-family:'Space Mono',monospace; font-size:13px; line-height:1.7;
+    background:transparent; color:var(--txt); border:none; outline:none;
+    resize:none; padding:14px 16px; overflow-y:auto;
+    caret-color:var(--cyan);
+  }
+  #editor::placeholder { color:var(--mut); }
+
+  /* ── PREVIEW PANE ── */
+  #preview-pane { display:flex; flex-direction:column; overflow:hidden; }
+  #preview-scroll { flex:1; overflow:auto; }
+  #preview-table { border-collapse:collapse; width:100%; }
+  #preview-table th {
+    font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--mut); background:var(--dim); padding:8px 14px;
+    border-bottom:1px solid var(--bdr); border-right:1px solid var(--bdr);
+    white-space:nowrap; position:sticky; top:0; z-index:1;
+  }
+  #preview-table td {
+    font-family:'Space Mono',monospace; font-size:12px; padding:6px 14px;
+    border-bottom:1px solid var(--bdr); border-right:1px solid var(--bdr);
+    white-space:nowrap; max-width:200px; overflow:hidden; text-overflow:ellipsis;
+    color:var(--txt);
+  }
+  #preview-table td.rn { color:var(--mut); background:var(--dim); font-size:10px; text-align:center; min-width:36px; }
+  #preview-table td.empty { color:var(--bdr); }
+  #preview-table tr:hover td { background:rgba(34,211,238,.04); }
+
+  /* ── SYNTAX HINT ── */
+  #hint {
+    padding:8px 16px; font-family:'Space Mono',monospace; font-size:11px;
+    color:var(--mut); border-top:1px solid var(--bdr); line-height:1.7;
+    background:var(--dim);
+  }
+  #hint b { color:var(--txt); font-weight:600; }
+
+  /* ── STATUS BAR ── */
+  #statusbar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 14px; border-top:1px solid var(--bdr);
+    background:rgba(11,15,24,.96); font-family:'Space Mono',monospace; font-size:11px;
+  }
+  .sb-left { display:flex; gap:16px; align-items:center; color:var(--mut); }
+  #row-count { color:var(--cyan); }
+  #push-status { }
+  .sb-right { display:flex; gap:8px; }
+
+  .btn {
+    font-family:'Space Mono',monospace; font-size:11px; letter-spacing:.04em;
+    padding:5px 14px; border-radius:5px; cursor:pointer; border:1px solid var(--bdr);
+    background:var(--dim); color:var(--txt); transition:all .12s;
+  }
+  .btn:hover { border-color:var(--mut); }
+  .btn.accent { background:rgba(34,211,238,.12); border-color:var(--cyan); color:var(--cyan); }
+  .btn.accent:hover { background:rgba(34,211,238,.22); }
+  .btn:disabled { opacity:.35; cursor:not-allowed; }
+
+  .ok  { color:var(--grn); }
+  .err { color:var(--red); }
+
+  ::-webkit-scrollbar { width:6px; height:6px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:var(--bdr); border-radius:3px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- TOPBAR -->
+  <div id="bar">
+    <div id="logo">THAW<em>Sheet Editor</em></div>
+    <div class="bar-right">
+      <div class="setting">
+        <span>Start</span>
+        <input id="start-cell" value="A2" maxlength="4" title="Starting cell e.g. A2">
+      </div>
+      <div class="setting">
+        <span>Delim</span>
+        <input id="delim" value="|" maxlength="3" title="Column delimiter">
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN: editor + preview -->
+  <div id="main">
+
+    <div id="editor-pane">
+      <div class="pane-head">editor — paste or type data</div>
+      <textarea id="editor" spellcheck="false" placeholder="Paste pipe-delimited rows here. Each line = one row.
+
+Examples:
+
+  Omaha Processing | NE | Omaha | Holding facility | 41.25 | -95.93 | facility | active | 2026-06-20 |
+  Dallas Checkpoint | TX | Dallas | Road checkpoint | 32.77 | -96.79 | checkpoint | active | 2026-06-21 |
+
+Per-line cell override with [Col+Row] syntax:
+
+  [A2] Location Alpha | TX | Dallas | desc | 32.7 | -96.8 | activity | reported |
+  [A3] Location Beta  | CA | LA     | desc | 34.0 | -118.2 | facility | active  |
+  [C3] override col C row 3 only
+
+Columns advance right (+1 letter) from your start cell.
+Rows advance down (+1) per line unless overridden."></textarea>
+      <div id="hint">
+        <b>[A2]</b> name | state | city | desc | lat | lng | type | status | date &nbsp;·&nbsp;
+        Each <b>|</b> = next column &nbsp;·&nbsp; New line = next row &nbsp;·&nbsp; <b>[B4]</b> overrides cell per line
+      </div>
+    </div>
+
+    <div id="preview-pane">
+      <div class="pane-head">preview — live grid</div>
+      <div id="preview-scroll">
+        <table id="preview-table">
+          <thead id="pt-head"></thead>
+          <tbody id="pt-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- STATUS BAR -->
+  <div id="statusbar">
+    <div class="sb-left">
+      <span><span id="row-count">0</span> rows</span>
+      <span id="push-status"></span>
+    </div>
+    <div class="sb-right">
+      <button class="btn" onclick="copyTSV()">Copy TSV</button>
+      <button class="btn" onclick="clearEditor()">Clear</button>
+      <button class="btn accent" id="push-btn" onclick="pushToSheet()">Push to Sheet →</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const SHEET = "https://script.google.com/macros/s/AKfycbz--co93mNisSJAV0OyPt0hpkAMxtyrJ1-atwzNXaWCknufKhUdRyuX1dR3w7KoowaY/exec";
+const ALPHA  = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+function colIdx(ch)  { return ALPHA.indexOf(ch.toUpperCase()); }
+function colLet(n)   { return ALPHA[n] || "?"; }
+
+function getStartCell() {
+  const v = (document.getElementById("start-cell").value || "A2").trim().toUpperCase();
+  const col = colIdx(v[0]) >= 0 ? colIdx(v[0]) : 0;
+  const row = (parseInt(v.slice(1)) || 1) - 1;
+  return { col, row };
+}
+
+function getDelim() {
+  return document.getElementById("delim").value || "|";
+}
+
+function parseLines() {
+  const raw   = document.getElementById("editor").value;
+  const lines = raw.split("\n");
+  const start = getStartCell();
+  const delim = getDelim();
+  const parsed = [];
+  let curRow = start.row;
+
+  lines.forEach(line => {
+    if (!line.trim()) { curRow++; return; }
+
+    // [A3] override prefix
+    const m = line.match(/^\[([A-Za-z])(\d+)\]\s*/);
+    let col = start.col, row = curRow;
+    let text = line;
+    if (m) {
+      col  = colIdx(m[1]);
+      row  = parseInt(m[2]) - 1;
+      text = line.slice(m[0].length);
+    }
+
+    const cells = text.split(delim).map(s => s.trim());
+    parsed.push({ col, row, cells });
+    curRow = row + 1;
+  });
+
+  return parsed;
+}
+
+// ── PREVIEW ──────────────────────────────────────────────────────────────────
+function renderPreview() {
+  const rows = parseLines();
+  document.getElementById("row-count").textContent = rows.length;
+
+  if (!rows.length) {
+    document.getElementById("pt-head").innerHTML = "";
+    document.getElementById("pt-body").innerHTML = `<tr><td style="padding:24px 16px;color:var(--mut);font-family:'Space Mono',monospace;font-size:12px">No data yet</td></tr>`;
+    return;
+  }
+
+  // Determine grid extents
+  let minCol = Infinity, maxCol = -Infinity, minRow = Infinity, maxRow = -Infinity;
+  rows.forEach(r => {
+    minCol = Math.min(minCol, r.col);
+    maxCol = Math.max(maxCol, r.col + r.cells.length - 1);
+    minRow = Math.min(minRow, r.row);
+    maxRow = Math.max(maxRow, r.row);
+  });
+
+  // Build a 2D map: key = "col,row" → value
+  const grid = {};
+  rows.forEach(r => {
+    r.cells.forEach((val, ci) => {
+      grid[`${r.col + ci},${r.row}`] = val;
+    });
+  });
+
+  // Header row
+  let head = "<tr><th>#</th>";
+  for (let c = minCol; c <= maxCol; c++) head += `<th>${colLet(c)}</th>`;
+  head += "</tr>";
+  document.getElementById("pt-head").innerHTML = head;
+
+  // Body rows
+  let body = "";
+  for (let r = minRow; r <= maxRow; r++) {
+    body += `<tr><td class="rn">${r + 1}</td>`;
+    for (let c = minCol; c <= maxCol; c++) {
+      const val = grid[`${c},${r}`] ?? "";
+      const cls = val === "" ? " class=\"empty\"" : "";
+      const disp = val === "" ? "·" : val;
+      body += `<td${cls} title="${val}">${disp}</td>`;
+    }
+    body += "</tr>";
+  }
+  document.getElementById("pt-body").innerHTML = body;
+}
+
+// ── COPY TSV ─────────────────────────────────────────────────────────────────
+function copyTSV() {
+  const rows = parseLines();
+  if (!rows.length) return;
+  const tsv = rows.map(r => r.cells.join("\t")).join("\n");
+  navigator.clipboard.writeText(tsv)
+    .then(() => setStatus("Copied as TSV", true))
+    .catch(() => setStatus("Clipboard blocked", false));
+}
+
+// ── PUSH TO SHEET — JSONP ─────────────────────────────────────────────────────
+let _pushTimer = null;
+
+function pushToSheet() {
+  const rows = parseLines();
+  if (!rows.length) { setStatus("Nothing to push", false); return; }
+
+  const btn = document.getElementById("push-btn");
+  btn.disabled = true;
+  setStatus("Pushing " + rows.length + " row" + (rows.length !== 1 ? "s" : "") + "…", true);
+
+  const payload = rows.map(r => ({ col: r.col, row: r.row, values: r.cells }));
+  const cbName  = "_push_" + Date.now();
+  const s       = document.createElement("script");
+
+  window[cbName] = function(res) {
+    clearTimeout(_pushTimer);
+    s.remove();
+    delete window[cbName];
+    btn.disabled = false;
+    if (res && res.ok) {
+      setStatus("✓ Pushed " + rows.length + " row" + (rows.length !== 1 ? "s" : ""), true);
+    } else {
+      setStatus("Error: " + (res && res.error ? res.error : "unknown"), false);
+    }
+  };
+
+  s.onerror = () => {
+    clearTimeout(_pushTimer);
+    s.remove(); delete window[cbName];
+    btn.disabled = false;
+    setStatus("Network error — check GS URL & deployment", false);
+  };
+
+  const encoded = encodeURIComponent(JSON.stringify(payload));
+  s.src = SHEET + "?callback=" + cbName + "&action=write&data=" + encoded;
+  document.head.appendChild(s);
+
+  _pushTimer = setTimeout(() => {
+    if (btn.disabled) {
+      btn.disabled = false;
+      setStatus("Timeout — redeploy GS as 'Anyone (even anonymous)'", false);
+      s.remove(); delete window[cbName];
+    }
+  }, 9000);
+}
+
+// ── UTILS ─────────────────────────────────────────────────────────────────────
+function setStatus(msg, ok) {
+  const el = document.getElementById("push-status");
+  el.textContent = msg;
+  el.className = ok ? "ok" : "err";
+}
+
+function clearEditor() {
+  document.getElementById("editor").value = "";
+  renderPreview();
+  setStatus("", true);
+}
+
+// ── LIVE PREVIEW ──────────────────────────────────────────────────────────────
+["input","keyup"].forEach(ev => {
+  document.getElementById("editor").addEventListener(ev, renderPreview);
+});
+document.getElementById("start-cell").addEventListener("input", renderPreview);
+document.getElementById("delim").addEventListener("input", renderPreview);
+
+renderPreview();
+</script>
+</body>
+</html>

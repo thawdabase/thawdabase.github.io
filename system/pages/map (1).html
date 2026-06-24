@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>THAWNETWORK.github.io - detention centers and activity</title>
+<link rel="icon" type="image/png" href="system/favicons/current.png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Space+Mono&display=swap');
+
+  :root {
+    --bg:    #262626;
+    --panel: rgba(20,20,20,0.88);
+    --bdr:   #2a2a2a;
+    --cyan:  #22d3ee;
+    --red:   #ef4444;
+    --yel:   #facc15;
+    --org:   #f97316;
+    --pur:   #a78bfa;
+    --txt:   #e2e8f0;
+    --mut:   #64748b;
+    --grn:   #22c55e;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; background:var(--bg); font-family:'Space Grotesk',sans-serif; color:var(--txt); overflow:hidden; }
+
+  #map { position:fixed; inset:0; }
+
+  /* ── RADAR OVERLAY ─────────────────────────────────────────────── */
+  #radar-overlay {
+    position:fixed; inset:0; z-index:3000;
+    background:#0b0f18;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    transition:opacity 1s ease;
+  }
+  #radar-overlay.fade { opacity:0; pointer-events:none; }
+
+  .radar-wrap { position:relative; width:180px; height:180px; }
+
+  /* rings */
+  .radar-wrap::before, .radar-wrap::after {
+    content:''; position:absolute; border-radius:50%; border:1px solid rgba(34,211,238,.18);
+    top:50%; left:50%; transform:translate(-50%,-50%);
+  }
+  .radar-wrap::before { width:100%; height:100%; }
+  .radar-wrap::after  { width:60%;  height:60%; }
+
+  .radar-ring2 {
+    position:absolute; width:30%; height:30%;
+    border-radius:50%; border:1px solid rgba(34,211,238,.18);
+    top:50%; left:50%; transform:translate(-50%,-50%);
+  }
+
+  /* crosshairs */
+  .radar-cross {
+    position:absolute; inset:0;
+    background:
+      linear-gradient(rgba(34,211,238,.12) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(34,211,238,.12) 1px, transparent 1px);
+    background-size:100% 50%, 50% 100%;
+  }
+
+  /* sweep */
+  .radar-sweep {
+    position:absolute; inset:0;
+    border-radius:50%;
+    background: conic-gradient(
+      from 0deg,
+      rgba(34,211,238,0)       0deg,
+      rgba(34,211,238,0.04)   60deg,
+      rgba(34,211,238,0.18)  100deg,
+      rgba(34,211,238,0.36)  120deg,
+      rgba(34,211,238,0)     120.1deg
+    );
+    animation: sweep 2s linear infinite;
+  }
+  @keyframes sweep { to { transform:rotate(360deg); } }
+
+  /* center dot */
+  .radar-center {
+    position:absolute; width:6px; height:6px; border-radius:50%;
+    background:var(--cyan); top:50%; left:50%; transform:translate(-50%,-50%);
+    box-shadow:0 0 8px var(--cyan);
+  }
+
+  /* blips that appear on the radar */
+  .radar-blip {
+    position:absolute; width:4px; height:4px; border-radius:50%;
+    background:var(--cyan); opacity:0;
+    animation:blip 2s ease-in-out infinite;
+  }
+  @keyframes blip { 0%,100%{opacity:0;transform:scale(.5)} 40%,60%{opacity:.9;transform:scale(1)} }
+
+  .radar-label {
+    margin-top:28px;
+    font-family:'Space Mono',monospace; font-size:11px; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--cyan); opacity:.7;
+    animation:pulse-txt 2s ease-in-out infinite;
+  }
+  @keyframes pulse-txt { 0%,100%{opacity:.4} 50%{opacity:.9} }
+
+  /* ── SEARCH BAR ────────────────────────────────────────────────── */
+  #searchbar {
+    position:fixed; top:18px; left:50%; transform:translateX(-50%);
+    z-index:1000; width:340px; max-width:calc(100vw - 180px);
+    display:flex; align-items:center; gap:0;
+    background:var(--panel); border:1px solid var(--bdr); border-radius:10px;
+    backdrop-filter:blur(12px); overflow:hidden;
+  }
+  #searchbar svg { flex-shrink:0; margin-left:12px; opacity:.4; }
+  #search-input {
+    flex:1; background:transparent; border:none; outline:none;
+    font-family:'Space Grotesk',sans-serif; font-size:13px; color:var(--txt);
+    padding:10px 10px 10px 8px;
+  }
+  #search-input::placeholder { color:var(--mut); }
+  #search-clear {
+    background:none; border:none; color:var(--mut); cursor:pointer;
+    padding:0 10px; font-size:16px; line-height:1; display:none;
+  }
+  #search-clear:hover { color:var(--txt); }
+
+  /* search results dropdown */
+  #search-results {
+    position:fixed; top:54px; left:50%; transform:translateX(-50%);
+    z-index:1001; width:340px; max-width:calc(100vw - 180px);
+    background:var(--panel); border:1px solid var(--bdr); border-radius:8px;
+    backdrop-filter:blur(12px); display:none; overflow:hidden;
+    max-height:260px; overflow-y:auto;
+  }
+  .sr-item {
+    padding:9px 14px; cursor:pointer; border-bottom:1px solid var(--bdr);
+    font-size:13px; transition:background .1s;
+  }
+  .sr-item:last-child { border-bottom:none; }
+  .sr-item:hover { background:rgba(34,211,238,.07); }
+  .sr-item b { color:var(--txt); font-weight:600; }
+  .sr-item span { color:var(--mut); font-size:11px; margin-left:6px; }
+  .sr-type {
+    font-family:'Space Mono',monospace; font-size:9px; text-transform:uppercase;
+    letter-spacing:.08em; margin-right:6px;
+  }
+
+  /* ── LOCATE BUTTON ─────────────────────────────────────────────── */
+  #locate-btn {
+    position:fixed; top:18px; right:12px; z-index:1000;
+    width:38px; height:38px; border-radius:8px;
+    background:var(--panel); border:1px solid var(--bdr);
+    color:var(--mut); cursor:pointer; display:flex; align-items:center; justify-content:center;
+    backdrop-filter:blur(12px); transition:all .15s;
+  }
+  #locate-btn:hover { border-color:var(--cyan); color:var(--cyan); }
+  #locate-btn.active { border-color:var(--cyan); color:var(--cyan); background:rgba(34,211,238,.1); }
+
+  /* ── FILTERS ───────────────────────────────────────────────────── */
+  #filters { position:fixed; top:68px; right:12px; z-index:1000; display:flex; flex-direction:column; gap:5px; }
+  .fb {
+    font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase;
+    padding:6px 12px; border-radius:5px; cursor:pointer;
+    background:var(--panel); border:1px solid var(--bdr); color:var(--mut);
+    transition:all .15s; backdrop-filter:blur(8px);
+  }
+  .fb.on { border-color:transparent; }
+  .fb[data-t="all"].on      { background:var(--cyan); color:#000; }
+  .fb[data-t="facility"].on { background:var(--red);  color:#fff; }
+  .fb[data-t="activity"].on { background:var(--yel);  color:#000; }
+  .fb[data-t="protest"].on  { background:var(--org);  color:#fff; }
+  .fb[data-t="checkpoint"].on { background:var(--pur); color:#fff; }
+
+  /* ── LEGEND ────────────────────────────────────────────────────── */
+  #legend {
+    position:fixed; bottom:24px; left:12px; z-index:1000;
+    background:var(--panel); border:1px solid var(--bdr); border-radius:8px; padding:12px 16px;
+    backdrop-filter:blur(8px);
+  }
+  #legend h5 { font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--mut); margin-bottom:8px; }
+  .li { display:flex; align-items:center; gap:8px; font-size:12px; margin-bottom:5px; }
+  .li:last-child { margin-bottom:0; }
+  .ld { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+
+  /* ── INFO CARD ─────────────────────────────────────────────────── */
+  #card {
+    position:fixed; bottom:24px; right:12px; z-index:1000; width:280px; display:none;
+    background:var(--panel); border:1px solid var(--bdr); border-radius:10px; padding:16px 18px;
+    backdrop-filter:blur(8px);
+  }
+  #cx { position:absolute; top:10px; right:12px; background:none; border:none; color:var(--mut); font-size:17px; cursor:pointer; line-height:1; }
+  #cx:hover { color:var(--txt); }
+  #ct { font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.12em; text-transform:uppercase; margin-bottom:4px; }
+  #cn { font-size:15px; font-weight:600; line-height:1.3; margin-bottom:3px; }
+  #cl { font-size:11px; color:var(--mut); margin-bottom:10px; }
+  #cd { font-size:12px; color:#94a3b8; line-height:1.5; margin-bottom:10px; }
+  #cf { display:flex; align-items:center; justify-content:space-between; border-top:1px solid var(--bdr); padding-top:8px; font-family:'Space Mono',monospace; font-size:10px; color:var(--mut); }
+  .bdg { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:20px; }
+  .s-active     { background:rgba(239,68,68,.15);   color:var(--red); }
+  .s-reported   { background:rgba(250,204,21,.15);   color:var(--yel); }
+  .s-unverified { background:rgba(245,158,11,.15);   color:#f59e0b; }
+  .s-closed     { background:rgba(100,116,139,.15);  color:var(--mut); }
+
+  /* ── TOAST ─────────────────────────────────────────────────────── */
+  #toast {
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:2000; display:none;
+    background:#1e2d40; border:1px solid var(--bdr); border-radius:6px;
+    padding:8px 16px; font-family:'Space Mono',monospace; font-size:11px; color:var(--mut);
+    white-space:nowrap;
+  }
+
+  /* ── LEAFLET OVERRIDES ─────────────────────────────────────────── */
+  .leaflet-container { background:#262626; }
+  .leaflet-control-zoom { margin-bottom:8px !important; }
+  .leaflet-control-zoom a { background:var(--panel)!important; color:var(--txt)!important; border-color:var(--bdr)!important; }
+  .leaflet-control-attribution { display:none; }
+  .leaflet-tile { image-rendering:-webkit-optimize-contrast; image-rendering:crisp-edges; }
+
+  /* locate pulse ring */
+  .loc-pulse {
+    width:16px; height:16px; border-radius:50%;
+    background:rgba(34,211,238,.3); border:2px solid var(--cyan);
+    animation:loc-ring 1.5s ease-out infinite;
+  }
+  @keyframes loc-ring { 0%{transform:scale(1);opacity:1} 100%{transform:scale(3);opacity:0} }
+</style>
+</head>
+<body>
+
+<!-- RADAR BOOT OVERLAY -->
+<div id="radar-overlay">
+  <div class="radar-wrap">
+    <div class="radar-cross"></div>
+    <div class="radar-ring2"></div>
+    <div class="radar-sweep"></div>
+    <div class="radar-center"></div>
+    <!-- scattered blips at fixed positions -->
+    <div class="radar-blip" style="top:22%;left:60%;animation-delay:.3s"></div>
+    <div class="radar-blip" style="top:55%;left:25%;animation-delay:.9s"></div>
+    <div class="radar-blip" style="top:68%;left:58%;animation-delay:1.5s"></div>
+    <div class="radar-blip" style="top:35%;left:40%;animation-delay:.6s"></div>
+    <div class="radar-blip" style="top:45%;left:72%;animation-delay:1.1s"></div>
+    <div class="radar-blip" style="top:78%;left:38%;animation-delay:.2s"></div>
+  </div>
+  <div class="radar-label">Scanning…</div>
+</div>
+
+<!-- MAP -->
+<div id="map"></div>
+
+<!-- SEARCH BAR -->
+<div id="searchbar">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+  </svg>
+  <input id="search-input" type="text" placeholder="Search locations, cities, states…" autocomplete="off"/>
+  <button id="search-clear">×</button>
+</div>
+<div id="search-results"></div>
+
+<!-- LOCATE BUTTON -->
+<button id="locate-btn" title="Go to my location">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+    <circle cx="12" cy="12" r="8" stroke-opacity=".3"/>
+  </svg>
+</button>
+
+<!-- FILTERS -->
+<div id="filters">
+  <button class="fb on" data-t="all">All</button>
+  <button class="fb" data-t="facility">Facility</button>
+  <button class="fb" data-t="activity">Activity</button>
+  <button class="fb" data-t="protest">Protest</button>
+  <button class="fb" data-t="checkpoint">Checkpoint</button>
+</div>
+
+<!-- LEGEND -->
+<div id="legend">
+  <h5>Legend</h5>
+  <div class="li"><div class="ld" style="background:#ef4444"></div>Detention Facility</div>
+  <div class="li"><div class="ld" style="background:#facc15"></div>ICE Activity</div>
+  <div class="li"><div class="ld" style="background:#f97316"></div>Protest / Action</div>
+  <div class="li"><div class="ld" style="background:#a78bfa"></div>Checkpoint</div>
+</div>
+
+<!-- INFO CARD -->
+<div id="card">
+  <button id="cx">×</button>
+  <div id="ct"></div>
+  <div id="cn"></div>
+  <div id="cl"></div>
+  <div id="cd"></div>
+  <div id="cf"><span id="cu"></span><span class="bdg" id="cb"></span></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const SHEET   = "https://script.google.com/macros/s/AKfycbz--co93mNisSJAV0OyPt0hpkAMxtyrJ1-atwzNXaWCknufKhUdRyuX1dR3w7KoowaY/exec";
+const REFRESH = 90000;
+const HEATMAP_ZOOM_THRESHOLD = 7; // below this zoom → heatmap, above → dots
+
+const COLORS = {
+  facility:"#ef4444", activity:"#facc15",
+  protest:"#f97316", checkpoint:"#a78bfa", default:"#22d3ee"
+};
+
+// ── MAP — infinite x axis (worldCopyJump on, noWrap off) ──────────────────────
+const map = L.map("map", {
+  zoomControl:        true,
+  attributionControl: false,
+  worldCopyJump:      true,
+  minZoom:            2,
+}).setView([38,-97], 4);
+
+L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+  subdomains:   "abcd",
+  maxZoom:      19,
+  detectRetina: true,
+}).addTo(map);
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let rows      = [];
+let markers   = [];
+let heatLayer = null;
+let active    = "all";
+let locMarker = null;
+let locCircle = null;
+
+// ── RADAR FADE ────────────────────────────────────────────────────────────────
+function dismissRadar() {
+  const el = document.getElementById("radar-overlay");
+  el.classList.add("fade");
+  setTimeout(() => el.remove(), 1100);
+}
+
+// ── JSONP LOAD ────────────────────────────────────────────────────────────────
+let _jpTimer = null;
+function load() {
+  const prev = document.getElementById("_jp");
+  if (prev) prev.remove();
+  if (_jpTimer) clearTimeout(_jpTimer);
+
+  const s = document.createElement("script");
+  s.id    = "_jp";
+  s.src   = SHEET + "?callback=_cb";
+  s.onerror = () => { dismissRadar(); toast("Script load failed — check deployment URL"); };
+  document.head.appendChild(s);
+
+  _jpTimer = setTimeout(() => {
+    dismissRadar();
+    toast("Timeout — redeploy GS as 'Anyone (even anonymous)' with JSONP support");
+  }, 9000);
+}
+
+window._cb = function(data) {
+  clearTimeout(_jpTimer);
+  dismissRadar();
+  if (!Array.isArray(data) || data.length === 0) {
+    toast("Sheet returned no rows — check sheet name is THAW");
+    return;
+  }
+  rows = data.filter(r => r.lat && r.lng && !isNaN(+r.lat) && !isNaN(+r.lng));
+  draw();
+};
+
+// ── DRAW: heatmap at low zoom, dots at high zoom ──────────────────────────────
+function draw() {
+  const zoom = map.getZoom();
+  const set  = active === "all" ? rows : rows.filter(r => (r.type||"").toLowerCase() === active);
+
+  // clear markers
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+
+  // clear heatmap
+  if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
+
+  if (zoom < HEATMAP_ZOOM_THRESHOLD) {
+    // HEATMAP MODE
+    const pts = set.map(r => [+r.lat, +r.lng, 1]);
+    heatLayer = L.heatLayer(pts, {
+      radius:    28,
+      blur:      18,
+      maxZoom:   HEATMAP_ZOOM_THRESHOLD,
+      gradient: { 0.2:"#a78bfa", 0.4:"#22d3ee", 0.65:"#facc15", 0.85:"#f97316", 1.0:"#ef4444" }
+    }).addTo(map);
+  } else {
+    // DOT MODE
+    set.forEach(r => {
+      const c = COLORS[(r.type||"").toLowerCase()] || COLORS.default;
+      const icon = L.divIcon({
+        className: "",
+        html: `<div style="width:13px;height:13px;border-radius:50%;background:${c};border:2px solid rgba(255,255,255,.2);box-shadow:0 0 7px ${c}99;"></div>`,
+        iconSize:[13,13], iconAnchor:[6,6]
+      });
+      const m = L.marker([+r.lat,+r.lng],{icon}).addTo(map);
+      m.on("click", () => showCard(r));
+      markers.push(m);
+    });
+  }
+}
+
+map.on("zoomend", draw);
+
+// ── SEARCH ────────────────────────────────────────────────────────────────────
+const searchInput   = document.getElementById("search-input");
+const searchResults = document.getElementById("search-results");
+const searchClear   = document.getElementById("search-clear");
+
+searchInput.addEventListener("input", () => {
+  const q = searchInput.value.trim().toLowerCase();
+  searchClear.style.display = q ? "block" : "none";
+  if (!q || rows.length === 0) { searchResults.style.display = "none"; return; }
+
+  const hits = rows.filter(r =>
+    (r.name||"").toLowerCase().includes(q) ||
+    (r.city||"").toLowerCase().includes(q) ||
+    (r.state||"").toLowerCase().includes(q) ||
+    (r.type||"").toLowerCase().includes(q)
+  ).slice(0, 10);
+
+  if (!hits.length) { searchResults.style.display = "none"; return; }
+
+  searchResults.innerHTML = hits.map(r => {
+    const c = COLORS[(r.type||"").toLowerCase()] || COLORS.default;
+    const loc = [r.city,r.state].filter(Boolean).join(", ");
+    return `<div class="sr-item" data-lat="${r.lat}" data-lng="${r.lng}" data-idx="${rows.indexOf(r)}">
+      <span class="sr-type" style="color:${c}">${r.type||""}</span>
+      <b>${r.name||"Unknown"}</b><span>${loc}</span>
+    </div>`;
+  }).join("");
+
+  searchResults.querySelectorAll(".sr-item").forEach(el => {
+    el.addEventListener("click", () => {
+      const lat = +el.dataset.lat, lng = +el.dataset.lng;
+      map.flyTo([lat,lng], 12, {duration:1.2});
+      const r = rows[+el.dataset.idx];
+      setTimeout(() => showCard(r), 800);
+      searchResults.style.display = "none";
+      searchInput.value = r.name || "";
+    });
+  });
+
+  searchResults.style.display = "block";
+});
+
+searchClear.addEventListener("click", () => {
+  searchInput.value = "";
+  searchClear.style.display = "none";
+  searchResults.style.display = "none";
+  searchInput.focus();
+});
+
+document.addEventListener("click", e => {
+  if (!document.getElementById("searchbar").contains(e.target) &&
+      !searchResults.contains(e.target)) {
+    searchResults.style.display = "none";
+  }
+});
+
+// ── LOCATE ────────────────────────────────────────────────────────────────────
+document.getElementById("locate-btn").addEventListener("click", () => {
+  if (!navigator.geolocation) { toast("Geolocation not supported by your browser"); return; }
+
+  const btn = document.getElementById("locate-btn");
+  btn.classList.add("active");
+
+  navigator.geolocation.getCurrentPosition(pos => {
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    const acc = pos.coords.accuracy;
+
+    if (locMarker) { map.removeLayer(locMarker); map.removeLayer(locCircle); }
+
+    // accuracy ring
+    locCircle = L.circle([lat,lng], {
+      radius: acc, color:"#22d3ee", fillColor:"#22d3ee",
+      fillOpacity:.08, weight:1, opacity:.4
+    }).addTo(map);
+
+    // pulsing dot
+    const locIcon = L.divIcon({
+      className:"",
+      html:`<div style="position:relative;width:16px;height:16px;">
+        <div class="loc-pulse" style="position:absolute;inset:0;border-radius:50%;"></div>
+        <div style="position:absolute;inset:3px;border-radius:50%;background:#22d3ee;box-shadow:0 0 8px #22d3ee;"></div>
+      </div>`,
+      iconSize:[16,16], iconAnchor:[8,8]
+    });
+    locMarker = L.marker([lat,lng],{icon:locIcon,zIndexOffset:500}).addTo(map);
+
+    map.flyTo([lat,lng], 12, {duration:1.5});
+    btn.classList.remove("active");
+
+  }, err => {
+    btn.classList.remove("active");
+    const msgs = {1:"Location access denied","2":"Position unavailable","3":"Request timed out"};
+    toast("Location error: " + (msgs[err.code] || err.message));
+  }, { enableHighAccuracy:true, timeout:10000 });
+});
+
+// ── INFO CARD ─────────────────────────────────────────────────────────────────
+function showCard(r) {
+  const c = COLORS[(r.type||"").toLowerCase()] || COLORS.default;
+  document.getElementById("ct").textContent = (r.type||"").toUpperCase();
+  document.getElementById("ct").style.color = c;
+  document.getElementById("cn").textContent = r.name || "Unknown";
+  document.getElementById("cl").textContent = [r.city,r.state].filter(Boolean).join(", ");
+  document.getElementById("cd").textContent = r.description || "No description.";
+  document.getElementById("cu").textContent = r.last_update ? "Updated: "+r.last_update : "";
+  const b = document.getElementById("cb");
+  b.textContent = r.status || "unknown";
+  b.className   = "bdg s-"+(r.status||"unknown").toLowerCase();
+  document.getElementById("card").style.display = "block";
+}
+document.getElementById("cx").onclick = () => document.getElementById("card").style.display = "none";
+
+// ── FILTERS ───────────────────────────────────────────────────────────────────
+document.querySelectorAll(".fb").forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll(".fb").forEach(x => x.classList.remove("on"));
+    b.classList.add("on");
+    active = b.dataset.t;
+    draw();
+  };
+});
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+function toast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg; el.style.display = "block";
+  setTimeout(() => el.style.display = "none", 6000);
+}
+
+// ── START ─────────────────────────────────────────────────────────────────────
+load();
+setInterval(load, REFRESH);
+</script>
+</body>
+</html>
